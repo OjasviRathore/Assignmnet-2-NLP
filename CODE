@@ -1,0 +1,102 @@
+
+import cv2
+import numpy as np
+from ultralytics import YOLO
+
+# Load YOLO Pose Model
+model = YOLO("yolo26n-pose.pt")
+
+# Input video
+video_path = "input.mp4"
+
+# Read video
+cap = cv2.VideoCapture(video_path)
+
+# Video properties
+fps = cap.get(cv2.CAP_PROP_FPS)
+width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+# Output video
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+out = cv2.VideoWriter(
+    "pose_output.mp4",
+    fourcc,
+    fps,
+    (width, height)
+)
+
+# White color for dots and lines
+WHITE = (255, 255, 255)
+
+# Process video frame by frame
+while cap.isOpened():
+
+    ret, frame = cap.read()
+
+    if not ret:
+        break
+
+    # YOLO pose estimation
+    results = model(frame, conf=0.25, verbose=False)
+
+    # Create completely black background
+    black_frame = np.zeros((height, width, 3), dtype=np.uint8)
+
+    # Get keypoints
+    keypoints = results[0].keypoints
+
+    if keypoints is not None:
+
+        xy = keypoints.xy.cpu().numpy()
+        conf = keypoints.conf.cpu().numpy()
+
+        # Process each detected person
+        for person_idx in range(len(xy)):
+
+            points = xy[person_idx]
+            confidence = conf[person_idx]
+
+            # Draw white dots
+            for i, (x, y) in enumerate(points):
+
+                if confidence[i] > 0.25:
+
+                    cv2.circle(
+                        black_frame,
+                        (int(x), int(y)),
+                        5,
+                        WHITE,
+                        -1
+                    )
+
+            # Draw skeleton connections
+            for start, end in model.model.kpt_shape and [
+                (15, 13), (13, 11), (16, 14), (14, 12),
+                (11, 12), (5, 6), (5, 11), (6, 12),
+                (5, 7), (7, 9), (6, 8), (8, 10),
+                (11, 13), (12, 14), (0, 1), (0, 2),
+                (1, 3), (2, 4), (0, 5), (0, 6)
+            ]:
+
+                if confidence[start] > 0.25 and confidence[end] > 0.25:
+
+                    x1, y1 = points[start]
+                    x2, y2 = points[end]
+
+                    cv2.line(
+                        black_frame,
+                        (int(x1), int(y1)),
+                        (int(x2), int(y2)),
+                        WHITE,
+                        2
+                    )
+
+    # Write processed frame
+    out.write(black_frame)
+
+# Release resources
+cap.release()
+out.release()
+
+print("Done! Output saved as pose_output.mp4")
